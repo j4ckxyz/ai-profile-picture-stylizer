@@ -20,48 +20,76 @@ export async function stylizeImageOpenRouter(
 
   const model = OPENROUTER_MODEL;
 
-  // Convert base64 string to Blob so we can send multipart/form-data
-  const binary = atob(base64ImageData);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  const imgBlob = new Blob([bytes], { type: mimeType || 'image/png' });
+  // First try multipart/form-data (some providers proxy OpenAI's shape)
+  try {
+    const binary = atob(base64ImageData);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    const imgBlob = new Blob([bytes], { type: mimeType || 'image/png' });
+  
+    const form = new FormData();
+    form.append('model', model);
+    form.append('prompt', prompt);
+    form.append('image', imgBlob, 'input-image');
+    form.append('image[]', imgBlob, 'input-image');
+  
+    const res = await fetch('https://openrouter.ai/api/v1/images', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${opts.apiKey}`,
+        'X-Title': 'AI Profile Picture Stylizer',
+        'X-OpenRouter-Title': 'AI Profile Picture Stylizer',
+      },
+      body: form,
+    });
+  
+    if (res.ok) {
+      const data = await res.json();
+      const candidate1 = data?.data?.[0]?.b64_json as string | undefined;
+      if (candidate1) return candidate1;
+      const candidate2 = data?.images?.[0]?.b64_json as string | undefined;
+      if (candidate2) return candidate2;
+      const candidate3 = data?.output as string | undefined;
+      if (candidate3) return candidate3;
+      throw new Error('OpenRouter did not return an image. Please try a different prompt or image.');
+    }
 
-  const form = new FormData();
-  form.append('model', model);
-  form.append('prompt', prompt);
-  // Some backends expect field name `image` or `image[]`; attach both defensively
-  form.append('image', imgBlob, 'input-image');
-  form.append('image[]', imgBlob, 'input-image');
+    // Some deployments respond 405/415 to multipart; fall through to JSON
+    if (res.status !== 405 && res.status !== 415 && res.status !== 400) {
+      const text = await res.text().catch(() => '');
+      throw new Error(`OpenRouter request failed: ${res.status} ${res.statusText} ${text}`);
+    }
+  } catch (e) {
+    // Network errors: try JSON next
+  }
 
-  const res = await fetch('https://openrouter.ai/api/v1/images', {
+  // Fallback: JSON body with data URL (some proxies accept this)
+  const dataUrl = `data:${mimeType || 'image/png'};base64,${base64ImageData}`;
+  const res2 = await fetch('https://openrouter.ai/api/v1/images', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${opts.apiKey}`,
+      'Content-Type': 'application/json',
       'X-Title': 'AI Profile Picture Stylizer',
+      'X-OpenRouter-Title': 'AI Profile Picture Stylizer',
     },
-    body: form,
+    body: JSON.stringify({ model, prompt, image: dataUrl, images: [dataUrl] }),
   });
 
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`OpenRouter request failed: ${res.status} ${res.statusText} ${text}`);
+  if (!res2.ok) {
+    let msg = '';
+    try { msg = await res2.text(); } catch {}
+    throw new Error(`OpenRouter request failed (json): ${res2.status} ${res2.statusText} ${msg}`);
   }
 
-  const data = await res.json();
-  // Try common shapes
-  // 1) { data: [{ b64_json: "..." }] }
-  const candidate1 = data?.data?.[0]?.b64_json as string | undefined;
-  if (candidate1) return candidate1;
-
-  // 2) { images: [{ b64_json: "..." }] }
-  const candidate2 = data?.images?.[0]?.b64_json as string | undefined;
-  if (candidate2) return candidate2;
-
-  // 3) { output: "...base64..." }
-  const candidate3 = data?.output as string | undefined;
-  if (candidate3) return candidate3;
-
-  throw new Error('OpenRouter did not return an image. Please try a different prompt or image.');
+  const j = await res2.json();
+  const candidate1b = j?.data?.[0]?.b64_json as string | undefined;
+  if (candidate1b) return candidate1b;
+  const candidate2b = j?.images?.[0]?.b64_json as string | undefined;
+  if (candidate2b) return candidate2b;
+  const candidate3b = j?.output as string | undefined;
+  if (candidate3b) return candidate3b;
+  throw new Error('OpenRouter did not return an image (json). Please try a different prompt or image.');
 }
 
 export async function validateOpenRouterKey(apiKey: string): Promise<boolean> {
