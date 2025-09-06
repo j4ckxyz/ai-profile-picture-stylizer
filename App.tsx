@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useEffect } from 'react';
+import ImageEditorModal from './components/ImageEditorModal';
 import { stylizeImage as stylizeWithGemini } from './services/geminiService';
 import { stylizeImageOpenRouter, validateOpenRouterKey, getOpenRouterModelId } from './services/openrouterService';
 import { saveKeys, loadKeys, getProvider, setProvider, saveAppData, loadAppData, type Provider, type StoredKeys } from './services/keyStore';
@@ -34,9 +35,10 @@ const TrashIcon: React.FC = () => (
 interface ImageUploaderProps {
   onFileSelect: (file: File) => void;
   originalImagePreview: string | null;
+  onEdit?: () => void;
 }
 
-const ImageUploader: React.FC<ImageUploaderProps> = ({ onFileSelect, originalImagePreview }) => {
+const ImageUploader: React.FC<ImageUploaderProps> = ({ onFileSelect, originalImagePreview, onEdit }) => {
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.files && event.target.files[0]) {
       onFileSelect(event.target.files[0]);
@@ -55,9 +57,9 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({ onFileSelect, originalIma
   };
 
   return (
-    <div className="w-full lg:w-1/2 p-4 flex flex-col items-center justify-center">
-      <h2 className="text-2xl font-bold mb-4 text-center text-gray-300">Your Picture</h2>
-      <div className="w-full max-w-sm aspect-square bg-white/5 border border-white/10 backdrop-blur-xl rounded-2xl shadow-lg flex items-center justify-center p-4">
+    <div className="w-full lg:w-1/2 p-2 sm:p-4 flex flex-col items-center justify-center">
+      <h2 className="text-lg sm:text-2xl font-bold mb-3 sm:mb-4 text-center text-gray-300">Your Picture</h2>
+      <div className="w-full max-w-xs sm:max-w-sm aspect-square bg-white/5 border border-white/10 backdrop-blur-xl rounded-2xl shadow-lg flex items-center justify-center p-3 sm:p-4">
         {originalImagePreview ? (
           <img src={originalImagePreview} alt="Original profile" className="max-w-full max-h-full object-contain rounded-xl" />
         ) : (
@@ -67,9 +69,9 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({ onFileSelect, originalIma
             onDragOver={handleDragOver}
             onDrop={handleDrop}
           >
-            <div className="flex flex-col items-center justify-center pt-5 pb-6">
+            <div className="flex flex-col items-center justify-center pt-4 sm:pt-5 pb-5 sm:pb-6 px-2">
               <UploadIcon />
-              <p className="mb-2 text-sm text-gray-400"><span className="font-semibold">Click to upload</span> or drag and drop</p>
+              <p className="mb-2 text-xs sm:text-sm text-gray-400 text-center"><span className="font-semibold">Click to upload</span> or drag and drop</p>
               <p className="text-xs text-gray-500">PNG, JPG, or WEBP</p>
             </div>
             <input id="file-upload" type="file" className="hidden" accept="image/png, image/jpeg, image/webp" onChange={handleFileChange} />
@@ -77,10 +79,17 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({ onFileSelect, originalIma
         )}
       </div>
        {originalImagePreview && (
-         <label htmlFor="file-upload" className="mt-4 px-4 py-2 bg-indigo-600 text-white rounded-lg cursor-pointer hover:bg-indigo-500 transition-colors">
-            Change Picture
-            <input id="file-upload" type="file" className="hidden" accept="image/png, image/jpeg, image/webp" onChange={handleFileChange} />
-         </label>
+         <div className="mt-3 sm:mt-4 flex gap-2">
+           <label htmlFor="file-upload-change" className="px-3 sm:px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg cursor-pointer hover:bg-indigo-500 transition-colors">
+              Change Picture
+              <input id="file-upload-change" type="file" className="hidden" accept="image/png, image/jpeg, image/webp" onChange={handleFileChange} />
+           </label>
+           <button
+             type="button"
+             onClick={onEdit}
+             className="px-3 sm:px-4 py-2 text-sm bg-white/10 border border-white/10 rounded-lg hover:bg-white/15 transition-colors"
+           >Edit</button>
+         </div>
        )}
     </div>
   );
@@ -90,30 +99,31 @@ interface ResultDisplayProps {
     isLoading: boolean;
     generatedImageUrl: string | null;
     error: string | null;
+    onEdit?: () => void;
 }
 
-const ResultDisplay: React.FC<ResultDisplayProps> = ({ isLoading, generatedImageUrl, error }) => (
-    <div className="w-full lg:w-1/2 p-4 flex flex-col items-center justify-center">
-        <h2 className="text-2xl font-bold mb-4 text-center text-gray-300">Stylized Picture</h2>
-        <div className="w-full max-w-sm aspect-square bg-white/5 border border-white/10 backdrop-blur-xl rounded-2xl shadow-lg flex items-center justify-center p-4 relative overflow-hidden">
+const ResultDisplay: React.FC<ResultDisplayProps> = ({ isLoading, generatedImageUrl, error, onEdit }) => (
+    <div className="w-full lg:w-1/2 p-2 sm:p-4 flex flex-col items-center justify-center">
+        <h2 className="text-lg sm:text-2xl font-bold mb-3 sm:mb-4 text-center text-gray-300">Stylized Picture</h2>
+        <div className="w-full max-w-xs sm:max-w-sm aspect-square bg-white/5 border border-white/10 backdrop-blur-xl rounded-2xl shadow-lg flex items-center justify-center p-3 sm:p-4 relative overflow-hidden">
             {isLoading && (
                 <div className="absolute inset-0 bg-black bg-opacity-60 flex flex-col items-center justify-center z-10">
-                    <svg className="animate-spin -ml-1 mr-3 h-10 w-10 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <svg className="animate-spin -ml-1 mr-3 h-8 sm:h-10 w-8 sm:w-10 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                     </svg>
-                    <p className="mt-4 text-lg">Stylizing your picture...</p>
+                    <p className="mt-4 text-sm sm:text-lg text-center px-2">Stylizing your picture...</p>
                 </div>
             )}
             {error && !isLoading && (
-                <div className="text-center text-red-400 px-4">
-                    <p className="font-semibold">An error occurred</p>
-                    <p className="text-sm">{error}</p>
+                <div className="text-center text-red-400 px-2 sm:px-4">
+                    <p className="font-semibold text-sm sm:text-base">An error occurred</p>
+                    <p className="text-xs sm:text-sm">{error}</p>
                 </div>
             )}
             {!isLoading && !generatedImageUrl && !error && (
-                 <div className="text-center text-gray-500">
-                    <p>Your generated image will appear here.</p>
+                 <div className="text-center text-gray-500 px-2">
+                    <p className="text-sm sm:text-base">Your generated image will appear here.</p>
                 </div>
             )}
             {generatedImageUrl && (
@@ -121,14 +131,21 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({ isLoading, generatedImage
             )}
         </div>
         {generatedImageUrl && !isLoading && (
+          <div className="mt-3 sm:mt-4 flex gap-2">
             <a
-                href={generatedImageUrl}
-                download="stylized-profile-picture.png"
-                className="mt-4 px-6 py-2 bg-green-600 text-white font-semibold rounded-lg shadow-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 focus:ring-offset-gray-900 transition-all flex items-center justify-center"
+              href={generatedImageUrl}
+              download="stylized-profile-picture.png"
+              className="px-4 sm:px-6 py-2 text-sm sm:text-base bg-green-600 text-white font-semibold rounded-lg shadow-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 focus:ring-offset-gray-900 transition-all flex items-center justify-center gap-2"
             >
-                <DownloadIcon />
-                Download
+              <DownloadIcon />
+              Download
             </a>
+            <button
+              type="button"
+              onClick={onEdit}
+              className="px-4 sm:px-6 py-2 text-sm sm:text-base bg-white/10 border border-white/10 rounded-lg hover:bg-white/15"
+            >Edit</button>
+          </div>
         )}
     </div>
 );
@@ -163,7 +180,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ history, onDelete, onClear })
         <p className="text-sm text-gray-500">Go back to the Stylizer to create your first image.</p>
       </div>
     ) : (
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6">
         {history.map((item, index) => (
           <div key={index} className="group relative bg-gray-800 rounded-lg overflow-hidden shadow-lg">
             <img src={item.imageUrl} alt={`Stylized with ${item.theme}`} className="w-full h-full object-cover aspect-square" />
@@ -215,6 +232,35 @@ export default function App() {
   const [googleValid, setGoogleValid] = useState<boolean | null>(null);
   const [openrouterValid, setOpenrouterValid] = useState<boolean | null>(null);
   const [usage, setUsage] = useState<Usage>({ ...DEFAULT_USAGE });
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [showInstallButton, setShowInstallButton] = useState<boolean>(false);
+  const [editorOpen, setEditorOpen] = useState<boolean>(false);
+  const [editorTarget, setEditorTarget] = useState<'input' | 'output' | null>(null);
+  const [editorImageSrc, setEditorImageSrc] = useState<string | null>(null);
+
+  // PWA Install functionality
+  useEffect(() => {
+    const handler = (e: any) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+      setShowInstallButton(true);
+    };
+
+    window.addEventListener('beforeinstallprompt', handler);
+    return () => window.removeEventListener('beforeinstallprompt', handler);
+  }, []);
+
+  const handleInstallClick = async () => {
+    if (!deferredPrompt) return;
+    
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    
+    if (outcome === 'accepted') {
+      setShowInstallButton(false);
+    }
+    setDeferredPrompt(null);
+  };
 
   // Load provider preference
   useEffect(() => {
@@ -245,6 +291,24 @@ export default function App() {
     setGeneratedImageUrl(null);
     setError(null);
     setOriginalImagePreview(URL.createObjectURL(file));
+  };
+
+  const openEditorFor = (target: 'input' | 'output') => {
+    if (target === 'input' && originalImagePreview) {
+      setEditorTarget('input');
+      setEditorImageSrc(originalImagePreview);
+      setEditorOpen(true);
+    } else if (target === 'output' && generatedImageUrl) {
+      setEditorTarget('output');
+      setEditorImageSrc(generatedImageUrl);
+      setEditorOpen(true);
+    }
+  };
+
+  const dataUrlToFile = async (dataUrl: string, filename = 'edited.png'): Promise<File> => {
+    const res = await fetch(dataUrl);
+    const blob = await res.blob();
+    return new File([blob], filename, { type: 'image/png' });
   };
 
   const generateStyledImage = useCallback(async (theme: string) => {
@@ -312,22 +376,31 @@ export default function App() {
   }, [history, usage, passphrase]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-gray-100 font-sans p-4 sm:p-6 lg:p-8">
+    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-gray-100 font-sans p-3 sm:p-4 lg:p-6 xl:p-8">
       <div className="container mx-auto max-w-7xl">
-        <header className="mb-8 flex flex-col items-center gap-4">
-          <div className="w-full flex items-center justify-between bg-white/5 border border-white/10 backdrop-blur-xl rounded-2xl px-5 py-4 shadow-xl shadow-black/30">
-            <div>
-              <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight">
+        <header className="mb-6 sm:mb-8 flex flex-col items-center gap-4">
+          <div className="w-full flex flex-col sm:flex-row items-center justify-between bg-white/5 border border-white/10 backdrop-blur-xl rounded-2xl px-4 sm:px-5 py-4 shadow-xl shadow-black/30 gap-4 sm:gap-0">
+            <div className="text-center sm:text-left">
+              <h1 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold tracking-tight">
                 AI Profile Picture <span className="text-indigo-400">Stylizer</span>
               </h1>
-              <p className="mt-1 text-sm text-gray-400">Upload your picture, pick a theme, and let AI restyle it.</p>
+              <p className="mt-1 text-xs sm:text-sm text-gray-400">Upload your picture, pick a theme, and let AI restyle it.</p>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-3">
               <CostPill usage={usage} />
               <ProviderPill provider={provider} googleValid={googleValid} openrouterValid={openrouterValid} />
+              {showInstallButton && (
+                <button
+                  onClick={handleInstallClick}
+                  className="px-3 sm:px-4 py-2 text-sm rounded-xl bg-green-600 hover:bg-green-500 transition shadow-md"
+                  aria-label="Install App"
+                >
+                  📱 Install
+                </button>
+              )}
               <button
                 onClick={() => setSettingsOpen(true)}
-                className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 transition shadow-md"
+                className="px-3 sm:px-4 py-2 text-sm rounded-xl bg-indigo-600 hover:bg-indigo-500 transition shadow-md"
                 aria-label="Open Settings"
               >Settings</button>
             </div>
@@ -352,43 +425,43 @@ export default function App() {
         </div>
 
         {activeTab === 'stylizer' && (
-          <main className="bg-white/5 border border-white/10 backdrop-blur-xl rounded-2xl shadow-2xl p-4 md:p-8">
-            <div className="flex flex-col lg:flex-row -m-4">
-               <ImageUploader onFileSelect={handleFileSelect} originalImagePreview={originalImagePreview} />
-               <ResultDisplay isLoading={isLoading} generatedImageUrl={generatedImageUrl} error={error} />
+          <main id="app-main" className="bg-white/5 border border-white/10 backdrop-blur-xl rounded-2xl shadow-2xl p-4 sm:p-6 lg:p-8">
+            <div className="flex flex-col lg:flex-row gap-4 lg:gap-6">
+               <ImageUploader onFileSelect={handleFileSelect} originalImagePreview={originalImagePreview} onEdit={() => openEditorFor('input')} />
+               <ResultDisplay isLoading={isLoading} generatedImageUrl={generatedImageUrl} error={error} onEdit={() => openEditorFor('output')} />
             </div>
 
             {originalImageFile && (
-              <div className="mt-10 pt-8 border-t border-white/10">
-                <h3 className="text-xl font-bold text-center mb-6">Choose a Style</h3>
-                <div className="flex flex-wrap justify-center gap-3">
+              <div className="mt-8 lg:mt-10 pt-6 lg:pt-8 border-t border-white/10">
+                <h3 className="text-lg sm:text-xl font-bold text-center mb-4 sm:mb-6">Choose a Style</h3>
+                <div className="flex flex-wrap justify-center gap-2 sm:gap-3">
                   {THEMES.map(theme => (
                     <button
                       key={theme}
                       onClick={() => generateStyledImage(theme)}
                       disabled={isLoading}
-                      className="px-5 py-2 text-sm font-semibold rounded-full transition-all duration-200 ease-in-out disabled:opacity-50 disabled:cursor-not-allowed bg-white/10 hover:bg-indigo-600/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 focus:ring-offset-slate-900 border border-white/10"
+                      className="px-3 sm:px-5 py-2 text-xs sm:text-sm font-semibold rounded-full transition-all duration-200 ease-in-out disabled:opacity-50 disabled:cursor-not-allowed bg-white/10 hover:bg-indigo-600/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 focus:ring-offset-slate-900 border border-white/10"
                     >
                       {isLoading && activeTheme === theme ? 'Generating...' : theme}
                     </button>
                   ))}
                 </div>
 
-                <form onSubmit={handleCustomThemeSubmit} className="mt-8 max-w-md mx-auto">
-                  <p className="text-center font-semibold mb-3">Or create your own theme:</p>
-                  <div className="flex gap-2">
+                <form onSubmit={handleCustomThemeSubmit} className="mt-6 sm:mt-8 max-w-md mx-auto">
+                  <p className="text-center font-semibold mb-3 text-sm sm:text-base">Or create your own theme:</p>
+                  <div className="flex flex-col sm:flex-row gap-2">
                     <input
                       type="text"
                       value={customTheme}
                       onChange={e => setCustomTheme(e.target.value)}
                       placeholder="e.g., '80s Retro Wave' or 'Steampunk'"
                       disabled={isLoading}
-                      className="flex-grow bg-white/10 border border-white/10 rounded-lg px-4 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition disabled:opacity-50 placeholder:text-gray-400"
+                      className="flex-grow bg-white/10 border border-white/10 rounded-lg px-4 py-2 text-sm sm:text-base focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition disabled:opacity-50 placeholder:text-gray-400"
                     />
                     <button
                       type="submit"
                       disabled={isLoading || !customTheme.trim()}
-                      className="px-6 py-2 bg-indigo-600 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 focus:ring-offset-slate-900 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="px-4 sm:px-6 py-2 bg-indigo-600 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 focus:ring-offset-slate-900 transition disabled:opacity-50 disabled:cursor-not-allowed text-sm sm:text-base"
                     >
                       {isLoading && activeTheme === customTheme.trim() ? '...' : 'Go'}
                     </button>
@@ -428,6 +501,24 @@ export default function App() {
             }}
             onResetUsage={() => setUsage({ tokensIn: 0, tokensOut: 0, costUSD: 0 })}
             modelInfo={{ google: 'gemini-2.5-flash-image-preview', openrouter: getOpenRouterModelId() }}
+          />
+        )}
+
+        {editorOpen && editorImageSrc && editorTarget && (
+          <ImageEditorModal
+            imageSrc={editorImageSrc}
+            onClose={() => setEditorOpen(false)}
+            onApply={async (url) => {
+              if (editorTarget === 'input') {
+                // Update preview and file
+                setOriginalImagePreview(url);
+                const f = await dataUrlToFile(url, 'edited-input.png');
+                setOriginalImageFile(f);
+              } else if (editorTarget === 'output') {
+                setGeneratedImageUrl(url);
+              }
+              setEditorOpen(false);
+            }}
           />
         )}
 
