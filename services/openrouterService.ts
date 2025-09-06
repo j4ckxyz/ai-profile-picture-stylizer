@@ -1,5 +1,5 @@
-// Minimal OpenRouter Images API client. Attempts image-to-image generation.
-// Docs: https://openrouter.ai/docs (Images endpoint)
+// OpenRouter client using Gemini 2.5 Flash Image Preview for image generation.
+// Docs: https://openrouter.ai/docs
 
 export interface OpenRouterOptions {
   apiKey: string;
@@ -8,7 +8,7 @@ export interface OpenRouterOptions {
 export const OPENROUTER_MODEL = 'google/gemini-2.5-flash-image-preview';
 export function getOpenRouterModelId() { return OPENROUTER_MODEL; }
 
-// Tries to stylize an image using OpenRouter's images endpoint.
+// Stylizes an image using OpenRouter's chat completions endpoint with Gemini image generation.
 // Returns base64-encoded PNG.
 export async function stylizeImageOpenRouter(
   base64ImageData: string,
@@ -20,95 +20,74 @@ export async function stylizeImageOpenRouter(
 
   const model = OPENROUTER_MODEL;
 
-  // First try multipart/form-data (some providers proxy OpenAI's shape)
-  try {
-    const binary = atob(base64ImageData);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-    const imgBlob = new Blob([bytes], { type: mimeType || 'image/png' });
-  
-    const form = new FormData();
-    form.append('model', model);
-    form.append('prompt', prompt);
-    form.append('image', imgBlob, 'input-image');
-    form.append('image[]', imgBlob, 'input-image');
-  
-    const res = await fetch('https://openrouter.ai/api/v1/images', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${opts.apiKey}`,
-        'X-Title': 'AI Profile Picture Stylizer',
-        'X-OpenRouter-Title': 'AI Profile Picture Stylizer',
-        Accept: 'application/json',
-      },
-      body: form,
-    });
-    if (res.ok) {
-      const ct = res.headers.get('content-type') || '';
-      if (!ct.includes('application/json')) {
-        const t = await res.text().catch(() => '');
-        throw new Error(`OpenRouter returned non-JSON (multipart). Snippet: ${t.slice(0, 120)}`);
-      }
-      let data: any;
-      try { data = await res.json(); } catch (e) {
-        const t = await res.text().catch(() => '');
-        throw new Error(`OpenRouter JSON parse error (multipart). Snippet: ${t.slice(0, 120)}`);
-      }
-      const candidate1 = data?.data?.[0]?.b64_json as string | undefined;
-      if (candidate1) return candidate1;
-      const candidate2 = data?.images?.[0]?.b64_json as string | undefined;
-      if (candidate2) return candidate2;
-      const candidate3 = data?.output as string | undefined;
-      if (candidate3) return candidate3;
-      throw new Error('OpenRouter did not return an image. Please try a different prompt or image.');
-    }
-
-    // Some deployments respond 405/415 to multipart; fall through to JSON
-    if (res.status !== 405 && res.status !== 415 && res.status !== 400) {
-      const text = await res.text().catch(() => '');
-      throw new Error(`OpenRouter request failed: ${res.status} ${res.statusText} ${text}`);
-    }
-  } catch (e) {
-    // Network errors: try JSON next
-  }
-
-  // Fallback: JSON body with data URL (some proxies accept this)
+  // Create a prompt that includes the image reference and styling instructions
   const dataUrl = `data:${mimeType || 'image/png'};base64,${base64ImageData}`;
-  const res2 = await fetch('https://openrouter.ai/api/v1/images', {
+  const fullPrompt = `Create a stylized version of the provided image with this style: ${prompt}. Generate a new image that applies the requested styling while maintaining the subject and composition of the original image.`;
+
+  const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${opts.apiKey}`,
       'Content-Type': 'application/json',
       'X-Title': 'AI Profile Picture Stylizer',
-      'X-OpenRouter-Title': 'AI Profile Picture Stylizer',
-      Accept: 'application/json',
     },
-    body: JSON.stringify({ model, prompt, image: dataUrl, images: [dataUrl] }),
+    body: JSON.stringify({
+      model,
+      messages: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'text',
+              text: fullPrompt
+            },
+            {
+              type: 'image_url',
+              image_url: {
+                url: dataUrl
+              }
+            }
+          ]
+        }
+      ],
+      modalities: ['image', 'text'],
+      max_tokens: 4000
+    }),
   });
 
-  if (!res2.ok) {
+  if (!res.ok) {
     let msg = '';
-    try { msg = await res2.text(); } catch {}
-    throw new Error(`OpenRouter request failed (json): ${res2.status} ${res2.statusText} ${msg}`);
+    try { 
+      const errorData = await res.json();
+      msg = errorData.error?.message || JSON.stringify(errorData);
+    } catch {
+      msg = await res.text().catch(() => '');
+    }
+    throw new Error(`OpenRouter request failed: ${res.status} ${res.statusText} - ${msg}`);
   }
 
-  const ct2 = res2.headers.get('content-type') || '';
-  if (!ct2.includes('application/json')) {
-    const txt = await res2.text().catch(() => '');
-    throw new Error(`OpenRouter returned non-JSON (json body). Snippet: ${txt.slice(0, 120)}`);
+  const data = await res.json();
+  
+  // Check for generated images in the response
+  const message = data.choices?.[0]?.message;
+  if (!message) {
+    throw new Error('OpenRouter did not return a valid response.');
   }
-  let j: any;
-  try { j = await res2.json(); } catch {
-    const txt = await res2.text().catch(() => '');
-    throw new Error(`OpenRouter JSON parse error (json body). Snippet: ${txt.slice(0, 120)}`);
+
+  // Look for images in the message
+  const images = message.images;
+  if (images && images.length > 0) {
+    const imageUrl = images[0].image_url?.url;
+    if (imageUrl && imageUrl.startsWith('data:image/')) {
+      // Extract base64 data from data URL
+      const base64Match = imageUrl.match(/^data:image\/[^;]+;base64,(.+)$/);
+      if (base64Match) {
+        return base64Match[1];
+      }
+    }
   }
-  const candidate1b = j?.data?.[0]?.b64_json as string | undefined;
-  if (candidate1b) return candidate1b;
-  const candidate2b = j?.images?.[0]?.b64_json as string | undefined;
-  if (candidate2b) return candidate2b;
-  const candidate3b = j?.output as string | undefined;
-  if (candidate3b) return candidate3b;
-  throw new Error('OpenRouter did not return an image (json). Please try a different prompt or image.');
+
+  throw new Error('OpenRouter did not return a generated image. Please try a different prompt or image.');
 }
 
 export async function validateOpenRouterKey(apiKey: string): Promise<boolean> {
