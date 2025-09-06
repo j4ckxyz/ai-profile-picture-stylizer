@@ -39,12 +39,21 @@ export async function stylizeImageOpenRouter(
         Authorization: `Bearer ${opts.apiKey}`,
         'X-Title': 'AI Profile Picture Stylizer',
         'X-OpenRouter-Title': 'AI Profile Picture Stylizer',
+        Accept: 'application/json',
       },
       body: form,
     });
-  
     if (res.ok) {
-      const data = await res.json();
+      const ct = res.headers.get('content-type') || '';
+      if (!ct.includes('application/json')) {
+        const t = await res.text().catch(() => '');
+        throw new Error(`OpenRouter returned non-JSON (multipart). Snippet: ${t.slice(0, 120)}`);
+      }
+      let data: any;
+      try { data = await res.json(); } catch (e) {
+        const t = await res.text().catch(() => '');
+        throw new Error(`OpenRouter JSON parse error (multipart). Snippet: ${t.slice(0, 120)}`);
+      }
       const candidate1 = data?.data?.[0]?.b64_json as string | undefined;
       if (candidate1) return candidate1;
       const candidate2 = data?.images?.[0]?.b64_json as string | undefined;
@@ -72,6 +81,7 @@ export async function stylizeImageOpenRouter(
       'Content-Type': 'application/json',
       'X-Title': 'AI Profile Picture Stylizer',
       'X-OpenRouter-Title': 'AI Profile Picture Stylizer',
+      Accept: 'application/json',
     },
     body: JSON.stringify({ model, prompt, image: dataUrl, images: [dataUrl] }),
   });
@@ -82,7 +92,16 @@ export async function stylizeImageOpenRouter(
     throw new Error(`OpenRouter request failed (json): ${res2.status} ${res2.statusText} ${msg}`);
   }
 
-  const j = await res2.json();
+  const ct2 = res2.headers.get('content-type') || '';
+  if (!ct2.includes('application/json')) {
+    const txt = await res2.text().catch(() => '');
+    throw new Error(`OpenRouter returned non-JSON (json body). Snippet: ${txt.slice(0, 120)}`);
+  }
+  let j: any;
+  try { j = await res2.json(); } catch {
+    const txt = await res2.text().catch(() => '');
+    throw new Error(`OpenRouter JSON parse error (json body). Snippet: ${txt.slice(0, 120)}`);
+  }
   const candidate1b = j?.data?.[0]?.b64_json as string | undefined;
   if (candidate1b) return candidate1b;
   const candidate2b = j?.images?.[0]?.b64_json as string | undefined;
